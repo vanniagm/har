@@ -1,37 +1,14 @@
-## Welcome to GitHub Pages
+## Human Activities Recognition
 
-You can use the [editor on GitHub](https://github.com/vanniagm/har/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+This data project is an exploration and prediction of different human activities using the dataset recorded by Ugulino, W. et al. (See publication:  [Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements](http://groupware.les.inf.puc-rio.br/har)).
+The authors documented the activities of six young health participants. The participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+Read more: [Article](http://groupware.les.inf.puc-rio.br/har#ixzz4nIbNef8f)
 
-### Markdown
+#### HAR database description
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+This database documents the following phenomena:
+The devices record an event at 45 Hx, that means 1 read every .02 s. However the authors used for feature extraction a sliding window approach with different lengths from 0.5 second to 2.5 seconds, with 0.5 second overlap. In each step of the sliding window approach they calculated features on the Euler angles (roll, pitch and yaw), as well as the raw accelerometer, gyroscope and magnetometer readings. The 'classe' variable records the different positions the participants performed. I 
 
-```markdown
-Syntax highlighted code block
+In this work I will first do a feature processing and selection, in order to illustrate the dependance of the activities classes variable I wish to predict and all the other variables. Next, a prediction model is built for the outcome "classe" taking into account any insight concluded from the exploratory analysis.
 
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/vanniagm/har/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
