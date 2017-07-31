@@ -1,0 +1,254 @@
+---
+title: "Human activity recognition"
+output: 
+html_document:
+  keep_md: true
+  fig_caption: true
+author: "Vannia Gonzalez"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.path='files/plot-1', cache=TRUE)
+```
+
+# Synopsis
+
+This data project is an exploration and prediction of different human activities using the dataset recorded by Ugulino, W. et al. (See publication:  [Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements](http://groupware.les.inf.puc-rio.br/har)).
+The authors documented the activities of six young health participants. The participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Read more: [Article](http://groupware.les.inf.puc-rio.br/har#ixzz4nIbNef8f)
+
+#### HAR database description
+
+This database documents the following phenomena:
+The devices record an event at 45 Hx, that means 1 read every .02 s. However the authors used for feature extraction a sliding window approach with different lengths from 0.5 second to 2.5 seconds, with 0.5 second overlap. In each step of the sliding window approach they calculated features on the Euler angles (roll, pitch and yaw), as well as the raw accelerometer, gyroscope and magnetometer readings. The 'classe' variable records the different positions the participants performed. I 
+
+In this work I will first do a feature processing and selection, in order to illustrate the dependance of the activities classes variable I wish to predict and all the other variables. Next, a prediction model is built for the outcome "classe" taking into account any insight concluded from the exploratory analysis.
+
+# Data processing
+
+1. Downloading and reading the database
+
+```{r,echo=FALSE,eval=FALSE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","testing.csv")
+```
+
+```{r,echo=FALSE}
+#Setting libraries
+library(lubridate)
+library(plyr)
+library(reshape2)
+library(ggplot2)
+library(knitr)
+library(dplyr)
+library(caret)
+library(rpart)
+library(rattle)
+library('doMC')
+```
+
+2. Dimension of the dataset
+
+```{r}
+pretrain<-read.csv("training.csv",stringsAsFactors = FALSE)
+pretest<-read.csv('testing.csv',stringsAsFactors = FALSE)
+dim(pretrain)
+# 19622 160
+dim(pretest)
+# 20 160
+```
+
+That is 159 predictors plus the 'classe' variable and 19622 observations.
+
+3. Activity frequency
+Let us look first at the frequency of the classes, the variable we aim to predict. 
+
+```{r,fig.width=10, fig.height=6}
+frqclase<-table(pretrain$classe)
+gral_theme <- function(size=12,family='sans'){
+        theme_minimal(base_size =size, base_family = family) +
+                theme(
+                        axis.text = element_text(size = 10),
+                        axis.title = element_text(size = 12),
+                        panel.grid.major = element_line(color = "white"),
+                        panel.grid.minor = element_blank(),
+                        panel.background = element_rect(fill = "grey95"),
+                        strip.background = element_rect(fill = "lightgrey", color = "grey"),
+                        strip.text = element_text(face = "bold", size = 12, color = "darkgrey"),
+                        panel.border = element_rect(color = "grey", fill = NA, size = 0.5)
+                )}
+g<-ggplot(pretrain,aes(x=classe))
+g+geom_bar()+labs(title="Frequency of events for each activity",x='Activity type',y='Record number')+gral_theme()
+```
+
+# Feature selection and preprocessing
+
+1. First I check for any missing or null value and assign an index to each event with a missing or null value.
+
+```{r}
+training<-as.data.frame(sapply(pretrain[,8:159],function(x){as.numeric(x)}))
+checknanull<-function(x){c(sum(is.na(x)),sum(is.null(x)))}
+#apply(training,2,checknanull)
+indexna<-function(x){which(is.na(x))}
+l_indexna<-sapply(training[,1:152],indexna)
+l_indexna<-l_indexna[lapply(l_indexna,length)>=1]
+l<-sapply(l_indexna,length) #  
+table(l)
+colna<-names(l_indexna)
+```
+
+The table shows the number of observations with NA's per number of columns, that is how many predictors have any number of missing values. 
+
+101 columns have ~>97% missing values, therefore they cannot be replaced without bias. I would then construct the prediction model using as the training set the set of columns with no missing values.
+
+2. Removing columns with missing values and labels
+
+```{r}
+training1<-pretrain[,!(colnames(pretrain) %in% colna)]
+training1<-training1[,8:60] # Removing labels
+```
+
+4. Creating the data partition for training, testing and validation
+
+```{r}
+intrain<-createDataPartition(training1$classe,p=.7,list=FALSE)
+training1<-training1[intrain,]
+testing1<-training1[-intrain,]
+validation<-pretest[,!(colnames(pretest)%in%colna)]
+validation<-validation[,8:59]
+```
+
+```{r}
+training1$classe<-as.factor(training1$classe)
+testing1$classe<-as.factor(testing1$classe)
+```
+
+5. Variable importance
+
+5.1 In order to extract the relevant predictors, I will look into the variable importance using a gradient boosting machines model using a smaller sample of the data.
+
+```{r,fig.width=18, fig.height=11}
+control <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+# traininig
+set.seed(123)
+modimp<-train(classe~.,method='gbm',data=sample_n(training1,1000),verbose=FALSE,trControl = control,preProcess=c("center","scale"))
+featureimp<-varImp(modimp,scale=T)
+prinvar<-rownames(featureimp$importance)[1:17]
+plot(featureimp,main='Variable importance')
+```
+
+5.2 As a second feature selection I use the 'rpart' model to verify the most relevant predictors with those selected with the gradient boosting model.
+
+```{r}
+set.seed(123)
+# start with a very small cp
+dt <- rpart(classe ~ .,
+            data = training1,
+            method = "class",control=rpart.control(cp=.00001))
+#printcp(dt)
+best_cp<-dt$cptable[which.min(dt$cptable[,"xerror"]),"CP"]
+dt <- rpart(classe ~ .,
+            data = training1,
+            method = "class",control=rpart.control(cp=best_cp))
+prinvar2<-rownames(varImp(dt,scale=T)$importance)[1:17]
+prinvar==prinvar2
+```
+
+## Feature plots
+
+Next I preprocess the predictor variables, centering and scaling to limit the bias and I use that object created to standarize the testing and validations sets in the following. Below I show a density plot and a box plot of the variation of the most relevant predictors.
+
+```{r,fig.width=18, fig.height=11}
+set.seed(123)
+training1.1<-training1[,colnames(training1)%in%prinvar]
+training1.1$classe<-as.factor(training1$classe)
+preobj <- preProcess(training1.1[,1:17],method=c("center","scale"))
+training1.1 <- predict(preobj,training1.1[,1:17])
+training1.1$classe<-as.factor(training1$classe)
+testing1.1<-predict(preobj,testing1[,colnames(testing1)%in%prinvar])
+testing1.1$classe<-as.factor(testing1$classe)
+featurePlot(x=training1.1[,1:17],
+                y = training1.1$classe,
+                plot="density",auto.key=list(columns=5),scales=list(x=list(relation="free"), 
+                y=list(relation="free")))
+featurePlot(x=training1.1[,1:5],
+                y = training1.1$classe,
+                plot="box",auto.key=list(columns=5),scales=list(x=list(relation="free"), 
+                y=list(relation="free")))
+```
+
+The following code shows how the best complexity factor for the classifier tree is found. The plot show a pruned tree to show the first nodes.
+
+```{r,fig.width=19, fig.height=12}
+set.seed(123)
+modt <- rpart(classe ~ .,
+            data = training1.1,
+            method = "class",control=rpart.control(cp=.00001))
+#printcp(modt)
+best_cp<-modt$cptable[which.min(modt$cptable[,"xerror"]),"CP"]
+modt <- rpart(classe ~ .,
+            data = training1.1,
+            method = "class",control=rpart.control(minsplit=30))
+fancyRpartPlot(modt,cex=1)
+```
+
+Which again shows that the 'roll_belt' variable is the most important for classification (first node).
+
+# Prediction
+
+## Comparison among models in Caret package
+
+I will use three classifiers and compare its accuracy with the testing dataset. The same control variable is used accross all models, with repeated cross validation using k-fold with k=10, and 3 repetitions.
+
+#### Method: rpart
+
+```{r}
+set.seed(123)
+control<-control<-trainControl(method = "repeatedcv", number = 10, repeats = 3,verboseIter = FALSE,allowParallel = TRUE)
+rpart.grid <- expand.grid(.cp=best_cp)
+modelFit <- train(classe ~ .,method="rpart",data=training1.1,trControl=control,  tuneGrid=rpart.grid)
+pred <- predict(modelFit,testing1.1)
+res<-confusionMatrix(pred,testing1.1$classe)
+res$overall[[1]]
+```
+
+#### Method: Gradient boosting machines 'gbm'
+
+For the next two models ('gbm' and 'rf') I use parallel computing (with 4 cores available within my system) attaching the 'doMC' package.
+
+```{r,echo=FALSE}
+set.seed(123)
+registerDoMC(cores = 4)
+modelFit3<-train(classe~.,method='gbm',data=training1.1,trControl=control)
+pred3<-predict(modelFit3,testing1.1)
+```
+```{r}
+confusionMatrix(pred3,testing1.1$classe)$overall[[1]]
+```
+
+#### Random forests 'rf'
+
+```{r}
+set.seed(123)
+modelFit2<-train(classe~.,method='rf',data=training1.1,trControl=control)
+pred2<-predict(modelFit2,testing1.1)
+```
+```{r,echo=FALSE,eval=FALSE}
+pred2<-read.csv('pred2.csv')$x
+```
+```{r,eval=TRUE}
+confusionMatrix(pred2,testing1.1$classe)$overall[[1]]
+```
+
+This resulted in 100% accuracy and will therefore use this model to predict on the validation set. The accuracy on the validation set is expected to be lower than 100 percent. 
+
+# Prediction over validation dataset
+
+```{r,eval=FALSE}
+val<-validation[,colnames(validation)%in%prinvar]
+val<-predict(preobj,val)
+results<-predict(modelFit2,val)
+write.csv('results.csv',results)
+```
+
