@@ -12,3 +12,4 @@ The devices record an event at 45 Hx, that means 1 read every .02 s. However the
 
 In this work I will first do a feature processing and selection, in order to illustrate the dependance of the activities classes variable I wish to predict and all the other variables. Next, a prediction model is built for the outcome "classe" taking into account any insight concluded from the exploratory analysis.
 
+### The results are saved in the 'results.csv' file
